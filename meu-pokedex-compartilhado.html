@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meu Pokédex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Firebase (banco de dados compartilhado, gratuito) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<style>
+  :root{
+    --ink:#101220;
+    --panel:#191c2b;
+    --panel-alt:#222639;
+    --lcd:#0a0b10;
+    --text:#eef0f9;
+    --muted:#8890a8;
+    --yellow:#ffcb05;
+    --red:#ee3d3d;
+    --blue:#4c6ef5;
+    --hisui:#b39ddb;
+    --alola:#ff9d4d;
+    --galar:#4fc3e0;
+    --paldea:#ff6f91;
+    --mega:#ffd54a;
+    --gmax:#ff5252;
+    --other:#8890a8;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  html,body{
+    background:var(--ink);
+    color:var(--text);
+    font-family:'Rubik',sans-serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 16px 60px;}
+
+  /* ---- Aviso de configuração ---- */
+  .setup-banner{
+    background:#2a1d0a;
+    border:1px solid #6b4a12;
+    color:#ffd98a;
+    padding:12px 14px;
+    border-radius:12px;
+    font-size:13px;
+    line-height:1.6;
+    margin-bottom:16px;
+  }
+  .setup-banner b{color:var(--yellow);}
+  .setup-banner code{
+    background:#000;
+    padding:1px 6px;
+    border-radius:5px;
+    font-size:12px;
+  }
+
+  /* ---- Header / Pokedex device ---- */
+  .device{
+    background:linear-gradient(160deg,#e83d3d,#c92a2a);
+    border-radius:20px;
+    padding:16px 18px;
+    position:relative;
+    box-shadow:0 12px 30px -10px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.25);
+    margin-bottom:18px;
+  }
+  .device::before{
+    content:"";
+    position:absolute; inset:0;
+    border-radius:20px;
+    border:2px solid rgba(255,255,255,.15);
+    pointer-events:none;
+  }
+  .device-top{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+  .lens{
+    width:26px;height:26px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #bfe9ff, #4c6ef5 55%, #1b2a8f 100%);
+    box-shadow:0 0 0 4px rgba(255,255,255,.85), 0 0 0 6px rgba(0,0,0,.25), 0 2px 6px rgba(0,0,0,.4);
+    flex-shrink:0;
+  }
+  .lil-dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.7);}
+  .title{
+    font-family:'Press Start 2P',monospace;
+    font-size:13px;
+    letter-spacing:1px;
+    color:#fff;
+    text-shadow:2px 2px 0 rgba(0,0,0,.25);
+    margin-left:4px;
+  }
+  .subtitle{
+    font-size:12px;
+    color:rgba(255,255,255,.85);
+    margin-top:2px;
+    font-weight:500;
+  }
+  .lcd{
+    background:var(--lcd);
+    border-radius:10px;
+    padding:12px 14px;
+    position:relative;
+    overflow:hidden;
+    box-shadow:inset 0 0 0 3px #05060a, inset 0 2px 10px rgba(0,0,0,.8);
+  }
+  .lcd::after{
+    content:"";
+    position:absolute; inset:0;
+    background:repeating-linear-gradient(
+      to bottom, rgba(255,255,255,.035) 0px, rgba(255,255,255,.035) 1px, transparent 1px, transparent 3px
+    );
+    pointer-events:none;
+  }
+  .lcd-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .lcd-count{
+    font-family:'Press Start 2P',monospace;
+    font-size:22px;
+    color:var(--yellow);
+    text-shadow:0 0 8px rgba(255,203,5,.55);
+  }
+  .lcd-count small{font-size:11px;color:#7fdc7f;}
+  .lcd-status{
+    font-size:10px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
+    padding:4px 8px; border-radius:6px;
+  }
+  .lcd-status.online{background:rgba(90,220,120,.15);color:#7fe58f;}
+  .lcd-status.offline{background:rgba(220,90,90,.15);color:#ff9b9b;}
+  .lcd-bar{
+    height:8px;border-radius:4px;background:#1c1f2a;overflow:hidden;margin-top:10px;
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.6);
+  }
+  .lcd-bar-fill{
+    height:100%;
+    background:linear-gradient(90deg,#ffcb05,#ff9d4d);
+    width:0%;
+    transition:width .4s ease;
+  }
+  .lcd-label{font-size:10px;color:var(--muted);margin-top:6px;font-family:'Rubik',sans-serif;letter-spacing:.5px;text-transform:uppercase;}
+
+  /* ---- Controls ---- */
+  .controls{
+    position:sticky; top:0; z-index:20;
+    background:var(--ink);
+    padding:14px 0 10px;
+    margin-bottom:6px;
+  }
+  .search{
+    width:100%;
+    padding:12px 14px;
+    border-radius:12px;
+    border:1px solid #2a2e42;
+    background:var(--panel);
+    color:var(--text);
+    font-size:14px;
+    font-family:'Rubik',sans-serif;
+    outline:none;
+  }
+  .search:focus{border-color:var(--yellow);}
+  .chips{
+    display:flex; gap:8px; overflow-x:auto; padding:10px 2px 4px;
+    scrollbar-width:thin;
+  }
+  .chip{
+    flex-shrink:0;
+    padding:7px 13px;
+    border-radius:999px;
+    background:var(--panel);
+    border:1px solid #2a2e42;
+    color:var(--muted);
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    display:flex; align-items:center; gap:6px;
+    user-select:none;
+    transition:all .15s ease;
+    white-space:nowrap;
+  }
+  .chip:hover{border-color:#3a3f58;color:var(--text);}
+  .chip.active{
+    background:var(--yellow);
+    color:#1a1300;
+    border-color:var(--yellow);
+  }
+  .chip .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .chip .n{opacity:.75;font-weight:500;}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+  .btn-sm{
+    padding:7px 12px;border-radius:9px;border:1px solid #2a2e42;
+    background:var(--panel-alt);color:var(--text);font-size:12px;font-weight:600;
+    cursor:pointer;
+  }
+  .btn-sm:hover{border-color:var(--yellow);}
+  .btn-sm.danger:hover{border-color:var(--red);color:#ff9b9b;}
+
+  /* ---- Grid ---- */
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(118px,1fr));
+    gap:10px;
+    margin-top:14px;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid #262a3d;
+    border-radius:var(--radius);
+    padding:10px 8px 9px;
+    text-align:center;
+    cursor:pointer;
+    position:relative;
+    transition:transform .12s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .card:hover{transform:translateY(-2px);border-color:#3a3f58;}
+  .card.caught{
+    border-color:var(--yellow);
+    box-shadow:0 0 0 1px var(--yellow), 0 6px 18px -6px rgba(255,203,5,.35);
+    background:linear-gradient(180deg, rgba(255,203,5,.08), var(--panel) 55%);
+  }
+  .card .dex{font-size:10px;color:var(--muted);font-weight:600;}
+  .card .spr{width:56px;height:56px;margin:2px auto 4px;display:block;image-rendering:pixelated;filter:drop-shadow(0 3px 5px rgba(0,0,0,.4));}
+  .card.caught .spr{filter:drop-shadow(0 3px 5px rgba(0,0,0,.4)) drop-shadow(0 0 6px rgba(255,203,5,.5));}
+  .card .nm{font-size:12px;font-weight:600;line-height:1.2;text-transform:capitalize;}
+  .card .badge{
+    display:inline-block;margin-top:5px;padding:2px 7px;border-radius:999px;
+    font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:#0c0d14;
+  }
+  .stamp{
+    position:absolute; top:6px; right:6px;
+    width:18px;height:18px;
+    display:none;
+  }
+  .card.caught .stamp{display:block;}
+  .who{
+    position:absolute; bottom:5px; left:6px;
+    font-size:8px; color:var(--muted); font-weight:700;
+  }
+
+  .empty{
+    text-align:center;color:var(--muted);padding:50px 10px;font-size:14px;
+  }
+  .loading{
+    text-align:center;padding:70px 10px;color:var(--muted);font-size:14px;
+  }
+  .loading .spinner{
+    width:34px;height:34px;border-radius:50%;
+    border:3px solid #2a2e42;border-top-color:var(--yellow);
+    margin:0 auto 14px;animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  footer{
+    text-align:center;color:var(--muted);font-size:11px;margin-top:34px;line-height:1.6;
+  }
+
+  @media (max-width:420px){
+    .lcd-count{font-size:18px;}
+    .title{font-size:11px;}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr));}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .card{transition:none;}
+    .loading .spinner{animation:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="setupBanner"></div>
+
+  <div class="device">
+    <div class="device-top">
+      <div class="lens"></div>
+      <div class="lil-dot" style="background:#ffcb05;"></div>
+      <div class="lil-dot" style="background:#4fc84f;"></div>
+      <div class="lil-dot" style="background:#4c6ef5;"></div>
+      <div>
+        <div class="title">MEU POKÉDEX</div>
+        <div class="subtitle">Todas as formas nacionais + regionais (Hisui, Alola, Galar, Paldea e mais)</div>
+      </div>
+    </div>
+    <div class="lcd">
+      <div class="lcd-row">
+        <div class="lcd-count" id="lcdCount">0000<small> / 0000</small></div>
+        <div class="lcd-status offline" id="lcdStatus">conectando…</div>
+      </div>
+      <div class="lcd-bar"><div class="lcd-bar-fill" id="lcdFill"></div></div>
+      <div class="lcd-label" id="lcdLabel">carregando dados…</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <input class="search" id="search" type="text" placeholder="Buscar Pokémon (ex: pikachu, growlithe, zoroark)…">
+    <div class="chips" id="chips"></div>
+    <div class="toolbar">
+      <button class="btn-sm" id="markAll">Marcar todos visíveis</button>
+      <button class="btn-sm" id="unmarkAll">Desmarcar todos visíveis</button>
+      <button class="btn-sm danger" id="resetAll">Zerar tudo (afeta os dois)</button>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="loading"><div class="spinner"></div>Carregando Pokédex completa da PokéAPI…</div>
+  </div>
+
+  <footer>Dados de espécies e formas via PokéAPI · Toque em um card para marcar como capturado · Sincronizado em tempo real com quem tiver o link</footer>
+</div>
+
+<script>
+/* =======================================================================
+   CONFIGURAÇÃO DO FIREBASE — troque pelos dados do SEU projeto gratuito
+   (veja o passo a passo que o Claude te mandou junto com este arquivo)
+   ======================================================================= */
+const firebaseConfig = {
+  apiKey: "COLE_AQUI",
+  authDomain: "COLE_AQUI",
+  databaseURL: "COLE_AQUI",
+  projectId: "COLE_AQUI",
+  storageBucket: "COLE_AQUI",
+  messagingSenderId: "COLE_AQUI",
+  appId: "COLE_AQUI"
+};
+/* ======================================================================= */
+</script>
+
+<script>
+(function(){
+  const DB_PATH = 'pokedexCaught';
+  const configured = firebaseConfig.apiKey && firebaseConfig.apiKey !== 'COLE_AQUI';
+
+  const FORM_RULES = [
+    { test:/-hisui$/,            tag:'hisui',  label:'Hisui',        color:'var(--hisui)' },
+    { test:/-alola$/,            tag:'alola',  label:'Alola',        color:'var(--alola)' },
+    { test:/-galar$/,            tag:'galar',  label:'Galar',        color:'var(--galar)' },
+    { test:/-paldea/,            tag:'paldea', label:'Paldea',       color:'var(--paldea)' },
+    { test:/-mega/,              tag:'mega',   label:'Mega',         color:'var(--mega)' },
+    { test:/-gmax$/,             tag:'gmax',   label:'Gigantamax',   color:'var(--gmax)' },
+  ];
+
+  const CHIP_DEFS = [
+    { key:'all',    label:'Todos',          color:'var(--yellow)' },
+    { key:'base',   label:'Forma base',     color:'var(--blue)' },
+    { key:'hisui',  label:'Hisui',          color:'var(--hisui)' },
+    { key:'alola',  label:'Alola',          color:'var(--alola)' },
+    { key:'galar',  label:'Galar',          color:'var(--galar)' },
+    { key:'paldea', label:'Paldea',         color:'var(--paldea)' },
+    { key:'mega',   label:'Mega',           color:'var(--mega)' },
+    { key:'gmax',   label:'Gigantamax',     color:'var(--gmax)' },
+    { key:'other',  label:'Outras formas',  color:'var(--other)' },
+  ];
+
+  const POKEBALL_SVG = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+    '<circle cx="12" cy="12" r="10" fill="#fff" stroke="#1a1a1a" stroke-width="1.5"/>' +
+    '<path d="M2 12h7a3 3 0 0 0 6 0h7" stroke="#1a1a1a" stroke-width="1.5" fill="none"/>' +
+    '<path d="M2 12a10 10 0 0 1 20 0" fill="#ee3d3d" stroke="#1a1a1a" stroke-width="1.5"/>' +
+    '<circle cx="12" cy="12" r="3" fill="#fff" stroke="#1a1a1a" stroke-width="1.5"/>' +
+    '</svg>';
+
+  let allPokemon = [];
+  let caught = {};
+  let activeChip = 'all';
+  let searchTerm = '';
+  let dbRef = null;
+
+  const el = {
+    content: document.getElementById('content'),
+    chips: document.getElementById('chips'),
+    search: document.getElementById('search'),
+    lcdCount: document.getElementById('lcdCount'),
+    lcdFill: document.getElementById('lcdFill'),
+    lcdLabel: document.getElementById('lcdLabel'),
+    lcdStatus: document.getElementById('lcdStatus'),
+    markAll: document.getElementById('markAll'),
+    unmarkAll: document.getElementById('unmarkAll'),
+    resetAll: document.getElementById('resetAll'),
+    setupBanner: document.getElementById('setupBanner'),
+  };
+
+  if (!configured){
+    el.setupBanner.innerHTML =
+      '<div class="setup-banner"><b>Modo local (não sincronizado).</b> ' +
+      'Este arquivo ainda não tem as chaves do Firebase configuradas, então cada pessoa vai ' +
+      'ver só as próprias marcações, salvas apenas neste navegador. ' +
+      'Preencha o objeto <code>firebaseConfig</code> no topo do arquivo para ativar a ' +
+      'sincronização com seu amigo.</div>';
+    el.lcdStatus.textContent = 'não sincronizado';
+  }
+
+  function classify(name){
+    for (const r of FORM_RULES){
+      if (r.test.test(name)) return r;
+    }
+    if (name.includes('-')) {
+      return { tag:'other', label: null, color:'var(--other)' };
+    }
+    return { tag:'base', label:null, color:'var(--blue)' };
+  }
+
+  function prettyName(name){
+    const base = name.split('-')[0];
+    return base.charAt(0).toUpperCase() + base.slice(1);
+  }
+
+  function extraLabel(name, tag){
+    if (tag === 'base') return null;
+    const parts = name.split('-').slice(1);
+    if (!parts.length) return null;
+    return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  }
+
+  function spriteUrl(id){
+    return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/' + id + '.png';
+  }
+
+  /* ---------- Armazenamento ---------- */
+
+  function initStorage(){
+    if (!configured){
+      try {
+        const raw = localStorage.getItem('caught_pokemon_local');
+        if (raw) caught = JSON.parse(raw);
+      } catch(e){ caught = {}; }
+      return Promise.resolve();
+    }
+
+    firebase.initializeApp(firebaseConfig);
+    dbRef = firebase.database().ref(DB_PATH);
+
+    return new Promise((resolve) => {
+      let first = true;
+      dbRef.on('value', (snapshot) => {
+        caught = snapshot.val() || {};
+        el.lcdStatus.textContent = 'sincronizado';
+        el.lcdStatus.classList.remove('offline');
+        el.lcdStatus.classList.add('online');
+        if (first){ first = false; resolve(); }
+        else { renderChips(); renderGrid(); }
+      }, (err) => {
+        console.error(err);
+        el.lcdStatus.textContent = 'erro de conexão';
+        if (first){ first = false; resolve(); }
+      });
+    });
+  }
+
+  function setCaught(name, value){
+    if (value) caught[name] = true;
+    else delete caught[name];
+
+    if (!configured){
+      try { localStorage.setItem('caught_pokemon_local', JSON.stringify(caught)); }
+      catch(e){}
+      return;
+    }
+    if (value) dbRef.child(name).set(true);
+    else dbRef.child(name).remove();
+  }
+
+  function clearAllCaught(){
+    caught = {};
+    if (!configured){
+      try { localStorage.removeItem('caught_pokemon_local'); } catch(e){}
+      return;
+    }
+    dbRef.set(null);
+  }
+
+  /* ---------- PokéAPI ---------- */
+
+  async function loadPokemon(){
+    const res = await fetch('https://pokeapi.co/api/v2/pokemon?limit=2000&offset=0');
+    if (!res.ok) throw new Error('network');
+    const data = await res.json();
+    allPokemon = data.results.map(p => {
+      const parts = p.url.split('/').filter(Boolean);
+      const id = Number(parts[parts.length - 1]);
+      const info = classify(p.name);
+      return {
+        id,
+        name: p.name,
+        display: prettyName(p.name),
+        extra: extraLabel(p.name, info.tag),
+        tag: info.tag,
+        badgeLabel: info.label,
+        color: info.color,
+      };
+    }).sort((a,b) => a.id - b.id);
+  }
+
+  /* ---------- Render ---------- */
+
+  function counts(){
+    const c = { all: allPokemon.length };
+    CHIP_DEFS.forEach(d => { if (d.key !== 'all') c[d.key] = 0; });
+    allPokemon.forEach(p => { c[p.tag] = (c[p.tag] || 0) + 1; });
+    return c;
+  }
+
+  function renderChips(){
+    const c = counts();
+    el.chips.innerHTML = '';
+    CHIP_DEFS.forEach(def => {
+      if (def.key !== 'all' && !c[def.key]) return;
+      const chip = document.createElement('div');
+      chip.className = 'chip' + (activeChip === def.key ? ' active' : '');
+      chip.innerHTML = '<span class="dot" style="background:' + def.color + '"></span>' +
+        def.label + ' <span class="n">' + (c[def.key] || 0) + '</span>';
+      chip.addEventListener('click', () => {
+        activeChip = def.key;
+        renderChips();
+        renderGrid();
+      });
+      el.chips.appendChild(chip);
+    });
+  }
+
+  function visibleList(){
+    return allPokemon.filter(p => {
+      if (activeChip !== 'all' && p.tag !== activeChip) return false;
+      if (searchTerm && !p.display.toLowerCase().includes(searchTerm) &&
+          !(p.extra && p.extra.toLowerCase().includes(searchTerm))) return false;
+      return true;
+    });
+  }
+
+  function renderGrid(){
+    const list = visibleList();
+    if (!list.length){
+      el.content.innerHTML = '<div class="empty">Nenhum Pokémon encontrado com esse filtro.</div>';
+      updateLcd();
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+
+    list.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'card' + (caught[p.name] ? ' caught' : '');
+      card.dataset.name = p.name;
+
+      const dex = document.createElement('div');
+      dex.className = 'dex';
+      dex.textContent = '#' + String(p.id).padStart(4,'0');
+
+      const img = document.createElement('img');
+      img.className = 'spr';
+      img.loading = 'lazy';
+      img.src = spriteUrl(p.id);
+      img.alt = p.display;
+      img.onerror = function(){ this.style.opacity = '0.15'; };
+
+      const nm = document.createElement('div');
+      nm.className = 'nm';
+      nm.textContent = p.display;
+
+      card.appendChild(dex);
+      card.appendChild(img);
+      card.appendChild(nm);
+
+      if (p.badgeLabel || p.extra){
+        const badge = document.createElement('div');
+        badge.className = 'badge';
+        badge.style.background = p.color;
+        badge.textContent = p.badgeLabel || p.extra;
+        card.appendChild(badge);
+      }
+
+      const stamp = document.createElement('div');
+      stamp.className = 'stamp';
+      stamp.innerHTML = POKEBALL_SVG;
+      card.appendChild(stamp);
+
+      card.addEventListener('click', () => {
+        const next = !caught[p.name];
+        setCaught(p.name, next);
+        card.classList.toggle('caught', next);
+        renderChips();
+        updateLcd();
+      });
+
+      grid.appendChild(card);
+    });
+
+    frag.appendChild(grid);
+    el.content.innerHTML = '';
+    el.content.appendChild(frag);
+    updateLcd();
+  }
+
+  function updateLcd(){
+    const total = allPokemon.length;
+    const got = Object.keys(caught).filter(n => allPokemon.some(p => p.name === n)).length;
+    el.lcdCount.innerHTML = String(got).padStart(4,'0') + '<small> / ' + String(total).padStart(4,'0') + '</small>';
+    el.lcdFill.style.width = total ? ((got/total)*100).toFixed(1) + '%' : '0%';
+    const list = visibleList();
+    const gotVisible = list.filter(p => caught[p.name]).length;
+    el.lcdLabel.textContent = list.length + ' exibidos neste filtro · ' + gotVisible + ' capturados aqui';
+  }
+
+  /* ---------- Eventos ---------- */
+
+  el.search.addEventListener('input', () => {
+    searchTerm = el.search.value.trim().toLowerCase();
+    renderGrid();
+  });
+
+  el.markAll.addEventListener('click', () => {
+    visibleList().forEach(p => setCaught(p.name, true));
+    renderChips();
+    renderGrid();
+  });
+
+  el.unmarkAll.addEventListener('click', () => {
+    visibleList().forEach(p => setCaught(p.name, false));
+    renderChips();
+    renderGrid();
+  });
+
+  el.resetAll.addEventListener('click', () => {
+    const msg = configured
+      ? 'Isso vai apagar o progresso salvo PARA TODO MUNDO que usa este link. Tem certeza?'
+      : 'Isso vai apagar todo o seu progresso salvo. Tem certeza?';
+    if (!confirm(msg)) return;
+    clearAllCaught();
+    renderChips();
+    renderGrid();
+  });
+
+  /* ---------- Início ---------- */
+
+  async function init(){
+    try {
+      await Promise.all([loadPokemon(), initStorage()]);
+      renderChips();
+      renderGrid();
+    } catch(e){
+      console.error(e);
+      el.content.innerHTML = '<div class="empty">Não foi possível carregar os dados agora.<br>Verifique sua conexão e recarregue a página.</div>';
+      el.lcdLabel.textContent = 'erro ao carregar';
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
